@@ -18,7 +18,7 @@ def oauth_login(client_id: str, callback_port: int = 60355) -> None:
 
     oauth = OAuthBuilder(client_id, callback_port).build(open_authorization)
     config = Config.from_oauth(oauth)
-    # A real request verifies that the OAuth handle can create an API session.
+    # A real request verifies that the OAuth handle can create an SDK session.
     quotes = QuoteContext(config).quote(["NVDA.US"])
     if not quotes:
         raise RuntimeError("OAuth 已保存，但 NVDA.US 行情验证没有返回数据")

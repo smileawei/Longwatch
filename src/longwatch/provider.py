@@ -52,18 +52,17 @@ class LongbridgeProvider:
         oauth_client_id: str = "",
         oauth_callback_port: int = 60355,
     ):
+        if not oauth_client_id.strip():
+            raise ValueError("缺少 LONGBRIDGE_OAUTH_CLIENT_ID；LongWatch 仅支持 OAuth 认证")
         try:
             from longbridge.openapi import Config, OAuthBuilder, QuoteContext, TradeContext
         except ImportError as exc:
             raise RuntimeError("未安装 longbridge SDK，请先执行 pip install -e .") from exc
 
-        if oauth_client_id:
-            oauth = OAuthBuilder(oauth_client_id, oauth_callback_port).build(
-                lambda url: print(f"请先完成 Longbridge OAuth 授权: {url}", flush=True)
-            )
-            config = Config.from_oauth(oauth)
-        else:
-            config = Config.from_apikey_env()
+        oauth = OAuthBuilder(oauth_client_id, oauth_callback_port).build(
+            lambda url: print(f"请先完成 Longbridge OAuth 授权: {url}", flush=True)
+        )
+        config = Config.from_oauth(oauth)
         self._trade = TradeContext(config)
         self._quote = QuoteContext(config)
         self._include_extended_hours = include_extended_hours

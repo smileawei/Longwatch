@@ -8,6 +8,10 @@ from longwatch.provider import LongbridgeProvider
 
 
 class ProviderConversionTests(TestCase):
+    def test_requires_oauth_client_id(self):
+        with self.assertRaisesRegex(ValueError, "仅支持 OAuth"):
+            LongbridgeProvider(oauth_client_id="")
+
     def test_uses_newest_extended_hours_quote(self):
         provider = LongbridgeProvider.__new__(LongbridgeProvider)
         provider._include_extended_hours = True
