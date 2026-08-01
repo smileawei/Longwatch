@@ -125,14 +125,36 @@ LONGBRIDGE_ENABLE_OVERNIGHT=true
 
 ## Docker 常驻运行
 
-配置好 `.env` 后：
+GitHub Actions 会在 PR 中验证镜像构建，并在代码进入 `main` 后发布 AMD64/ARM64 多架构镜像：
+
+```text
+ghcr.io/smileawei/longwatch:latest
+```
+
+推送 `v1.0.0` 这类 Git 标签时还会生成 `1.0.0` 和 `1.0` 镜像标签。镜像构建不读取 `.env`，OAuth 与 Bark 凭证只在容器运行时提供。
+
+先复制并填写 `.env`，然后在 Docker 的持久卷中完成一次 OAuth 授权：
 
 ```bash
-docker compose up -d --build
+cp .env.example .env
+docker compose pull
+docker compose run --rm --service-ports monitor longwatch --oauth-login
+```
+
+终端会输出授权地址；在浏览器完成授权后，OAuth 令牌会保存在 `longbridge-oauth` Docker 卷中，并由监控与网页服务共享。随后启动：
+
+```bash
+docker compose up -d
 docker compose logs -f
 ```
 
-Compose 会同时启动 Bark 监控进程和 `8765` 端口的 K 线网页。状态保存在 `./data/state.json`，容器重启不会造成同一告警重复推送。
+如需使用当前源码在本地重新构建，而不是拉取 GHCR 镜像：
+
+```bash
+docker compose up -d --build
+```
+
+Compose 会同时启动 Bark 监控进程和 `8765` 端口的 K 线网页。状态保存在 `./data/state.json`，OAuth 令牌保存在独立的 Docker 卷；容器重启不会丢失授权，也不会造成同一告警重复推送。
 
 ## 自建 Bark Server
 
