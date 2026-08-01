@@ -1,6 +1,54 @@
 (() => {
   "use strict";
 
+  const THEME_MODE_KEY = "longwatch-theme-mode";
+  const THEME_MODES = ["auto", "light", "dark"];
+
+  function preferredThemeForTime(now = new Date()) {
+    const hour = now.getHours();
+    return hour >= 7 && hour < 19 ? "light" : "dark";
+  }
+
+  function readThemeMode() {
+    try {
+      const stored = window.localStorage.getItem(THEME_MODE_KEY);
+      return THEME_MODES.includes(stored) ? stored : "auto";
+    } catch (_error) {
+      return "auto";
+    }
+  }
+
+  let themeMode = readThemeMode();
+
+  function applyTheme(mode, { persist = false, redraw = false } = {}) {
+    const normalized = THEME_MODES.includes(mode) ? mode : "auto";
+    const effective = normalized === "auto" ? preferredThemeForTime() : normalized;
+    const changed = document.documentElement.dataset.theme !== effective;
+    themeMode = normalized;
+    document.documentElement.dataset.theme = effective;
+    document.documentElement.dataset.themeMode = normalized;
+    const label = normalized === "auto"
+      ? `自动 · ${effective === "light" ? "☀" : "☾"}`
+      : normalized === "light" ? "白天 · ☀" : "夜间 · ☾";
+    const button = document.getElementById("themeButton");
+    if (button) {
+      button.textContent = label;
+      button.setAttribute("aria-label", `主题：${label.replace(" · ", "，")}`);
+      button.title = "切换主题：自动 / 白天 / 夜间";
+    }
+    const themeColor = document.getElementById("themeColor");
+    if (themeColor) themeColor.content = effective === "light" ? "#f3f6f8" : "#0b0e12";
+    if (persist) {
+      try { window.localStorage.setItem(THEME_MODE_KEY, normalized); } catch (_error) { /* 使用内存状态 */ }
+    }
+    if (redraw && changed) {
+      refreshChartColors();
+      drawChart();
+    }
+  }
+
+  applyTheme(themeMode);
+
   const state = {
     positions: [],
     symbol: "",
@@ -16,6 +64,7 @@
     request: null,
     newsRequest: null,
     alertView: false,
+    alertToken: "",
   };
 
   const initialParams = new URLSearchParams(window.location.search);
@@ -24,6 +73,7 @@
   // 兼容已经发送过的旧 Bark 链接：带 symbol 的外部直达链接默认使用单股视图。
   // 面板内选股会显式写入 view=portfolio，刷新后仍保留完整持仓界面。
   state.alertView = Boolean(state.symbol) && initialParams.get("view") !== "portfolio";
+  state.alertToken = state.alertView ? initialParams.get("token") || "" : "";
   document.body.classList.toggle("alert-view", state.alertView);
 
   const el = Object.fromEntries([
@@ -39,7 +89,7 @@
     "newsPanel", "newsStatus", "newsList",
     "settingsButton", "settingsDialog", "settingsForm", "settingsClose", "barkDeviceKey",
     "barkConfigured", "barkServerUrl", "barkGroup", "barkLevel", "barkSound",
-    "settingsStatus", "testBarkButton", "saveBarkButton", "brandLabel",
+    "settingsStatus", "testBarkButton", "saveBarkButton", "brandLabel", "themeButton",
   ].map((id) => [id, document.getElementById(id)]));
 
   if (state.alertView) {
@@ -48,11 +98,19 @@
   }
 
   const context = el.klineChart.getContext("2d");
-  const colors = {
-    bg: "#10141a", grid: "#20262e", axis: "#69727e", up: "#3fcf8e",
-    down: "#f05b69", neutral: "#818b98", ma5: "#f3bd4e", ma20: "#8b7cf6",
-    cross: "#69727e",
-  };
+  const colors = {};
+
+  function refreshChartColors() {
+    const styles = getComputedStyle(document.documentElement);
+    const value = (name) => styles.getPropertyValue(name).trim();
+    Object.assign(colors, {
+      grid: value("--chart-grid"), axis: value("--chart-axis"), cross: value("--chart-cross"),
+      neutral: value("--chart-label-bg"), labelText: value("--chart-label-text"),
+      up: value("--up"), down: value("--down"), ma5: value("--ma5"), ma20: value("--ma20"),
+    });
+  }
+
+  refreshChartColors();
 
   function setConnection(mode, text) {
     el.connectionStatus.className = `connection ${mode}`;
@@ -67,8 +125,17 @@
 
   function hideNotice() { el.notice.classList.add("hidden"); }
 
+  function withAlertAuth(url) {
+    if (!state.alertView) return url;
+    const secured = new URL(url, window.location.origin);
+    secured.searchParams.set("symbol", state.symbol);
+    secured.searchParams.set("view", "alert");
+    secured.searchParams.set("token", state.alertToken);
+    return `${secured.pathname}${secured.search}`;
+  }
+
   async function requestJSON(url) {
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    const response = await fetch(withAlertAuth(url), { headers: { Accept: "application/json" } });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(payload.detail || payload.error || `HTTP ${response.status}`);
@@ -338,7 +405,7 @@
     el.newsPanel.classList.remove("hidden");
     el.newsStatus.textContent = "正在读取…";
     try {
-      const payload = await fetch(`/api/news?symbol=${encodeURIComponent(requestedSymbol)}&count=5`, {
+      const payload = await fetch(withAlertAuth(`/api/news?symbol=${encodeURIComponent(requestedSymbol)}&count=5`), {
         signal: state.newsRequest.signal,
         headers: { Accept: "application/json" },
       }).then(async (response) => {
@@ -493,7 +560,7 @@
         adjust: state.adjusted ? "forward" : "none",
         sessions: state.allSessions ? "all" : "intraday",
       });
-      const response = await fetch(`/api/candlesticks?${params}`, { signal: state.request.signal });
+      const response = await fetch(withAlertAuth(`/api/candlesticks?${params}`), { signal: state.request.signal });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         const error = new Error(payload.detail || payload.error || `HTTP ${response.status}`);
@@ -646,7 +713,7 @@
       context.setLineDash([]);
       context.fillStyle = colors.neutral;
       context.fillRect(m.width - m.right, hoverY - 9, m.right, 18);
-      context.fillStyle = "#0b0e12";
+      context.fillStyle = colors.labelText;
       context.fillText(formatNumber(data[index].close, 3), m.width - m.right + 7, hoverY);
     }
   }
@@ -674,6 +741,10 @@
   });
 
   el.settingsButton.addEventListener("click", openSettings);
+  el.themeButton.addEventListener("click", () => {
+    const nextMode = THEME_MODES[(THEME_MODES.indexOf(themeMode) + 1) % THEME_MODES.length];
+    applyTheme(nextMode, { persist: true, redraw: true });
+  });
   el.settingsClose.addEventListener("click", () => el.settingsDialog.close());
   el.settingsForm.addEventListener("submit", saveBarkSettings);
   el.testBarkButton.addEventListener("click", testBark);
@@ -713,6 +784,13 @@
   });
 
   new ResizeObserver(drawChart).observe(el.chartWrap);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && themeMode === "auto") applyTheme("auto", { redraw: true });
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key === THEME_MODE_KEY) applyTheme(event.newValue || "auto", { redraw: true });
+  });
+  setInterval(() => { if (themeMode === "auto") applyTheme("auto", { redraw: true }); }, 60_000);
   setInterval(() => { if (!document.hidden) loadPositions(false); }, 15_000);
   setInterval(() => { if (state.symbol && !document.hidden) loadCandles(); }, 60_000);
   setInterval(() => { if (state.symbol && !document.hidden) loadNews(); }, 600_000);

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark" data-theme-mode="auto">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0b0e12">
+    <meta name="theme-color" id="themeColor" content="#0b0e12">
     <title>LongWatch · 持仓 K 线</title>
     <meta name="description" content="Longbridge 持仓证券 K 线监控面板">
     <link rel="stylesheet" href="/app.css">
@@ -21,6 +21,7 @@
             <span class="status-dot"></span>
             <span>正在连接</span>
           </div>
+          <button class="theme-button" id="themeButton" type="button" aria-label="主题：自动" title="切换主题">自动 · ☾</button>
           <button class="settings-button" id="settingsButton" type="button">告警设置</button>
         </div>
       </header>

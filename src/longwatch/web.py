@@ -195,6 +195,18 @@ class DashboardApplication:
         self._news_cache: dict[str, tuple[float, list[Any]]] = {}
         self._env_path = Path(env_path)
         self._alert_link_signer = AlertLinkSigner(ensure_alert_link_secret(self._env_path))
+        self._alert_public_host = _dotenv_values(self._env_path).get(
+            "ALERT_PUBLIC_HOST", ""
+        ).strip().lower()
+
+    def is_public_alert_host(self, host_header: str) -> bool:
+        if not self._alert_public_host:
+            return False
+        try:
+            hostname = urlsplit(f"//{host_header}").hostname or ""
+        except ValueError:
+            return False
+        return hostname.lower() == self._alert_public_host
 
     def alert_access_allowed(self, query: dict[str, list[str]]) -> bool:
         symbol = query.get("symbol", [""])[0].strip().upper()
@@ -209,9 +221,14 @@ class DashboardApplication:
     def positions(self, query: dict[str, list[str]] | None = None) -> list[dict[str, Any]]:
         query = query or {}
         all_sessions = query.get("sessions", ["intraday"])[0] == "all"
+        requested_symbol = query.get("symbol", [""])[0].strip().upper()
+        if requested_symbol and not SYMBOL_PATTERN.fullmatch(requested_symbol):
+            raise ValueError("证券代码格式无效，例如 AAPL.US 或 700.HK")
         with self._lock:
             provider = self._get_provider()
             positions = provider.get_positions()
+            if requested_symbol:
+                positions = [item for item in positions if item.symbol == requested_symbol]
             symbols = [item.symbol for item in positions]
             quotes = provider.get_quotes(
                 (item.symbol for item in positions),
@@ -564,6 +581,29 @@ def make_handler(application: DashboardApplication):
             request = urlsplit(self.path)
             query = parse_qs(request.query)
             try:
+                public_alert_request = application.is_public_alert_host(
+                    self.headers.get("Host", "")
+                )
+                public_alert_api = request.path in {
+                    "/api/positions",
+                    "/api/candlesticks",
+                    "/api/news",
+                }
+                if public_alert_request and public_alert_api:
+                    if not application.alert_access_allowed(query):
+                        self._send_json(
+                            HTTPStatus.FORBIDDEN, {"error": "告警链接无效或已过期"}
+                        )
+                        return
+                elif public_alert_request and request.path not in {
+                    "/healthz",
+                    "/",
+                    "/index.html",
+                    "/app.css",
+                    "/app.js",
+                }:
+                    self._send_json(HTTPStatus.FORBIDDEN, {"error": "告警域名仅允许访问告警详情"})
+                    return
                 if request.path == "/healthz":
                     self._send_json(HTTPStatus.OK, {"ok": True})
                 elif request.path == "/api/positions":
@@ -584,7 +624,11 @@ def make_handler(application: DashboardApplication):
                         bool(query.get("symbol", [""])[0])
                         and query.get("view", [""])[0] != "portfolio"
                     )
-                    if is_detail and not application.alert_access_allowed(query):
+                    if (
+                        public_alert_request
+                        and request.path in {"/", "/index.html"}
+                        and not is_detail
+                    ) or (is_detail and not application.alert_access_allowed(query)):
                         self._send_alert_forbidden()
                         return
                     self._send_static(*STATIC_FILES[request.path])
@@ -605,6 +649,11 @@ def make_handler(application: DashboardApplication):
 
         def do_POST(self) -> None:
             request = urlsplit(self.path)
+            if application.is_public_alert_host(self.headers.get("Host", "")):
+                self._send_json(
+                    HTTPStatus.FORBIDDEN, {"error": "告警域名不允许修改设置"}
+                )
+                return
             if request.path not in {"/api/settings/bark", "/api/settings/bark/test"}:
                 self._send_json(HTTPStatus.NOT_FOUND, {"error": "接口不存在"})
                 return

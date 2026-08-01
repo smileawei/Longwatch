@@ -105,7 +105,8 @@ class WebServerTests(TestCase):
             "BARK_GROUP=LongWatch\n"
             "BARK_LEVEL=timeSensitive\n"
             "BARK_SOUND=\n"
-            "ALERT_DETAIL_BASE_URL=http://10.0.0.2:8765\n",
+            "ALERT_DETAIL_BASE_URL=http://10.0.0.2:8765\n"
+            "ALERT_PUBLIC_HOST=lwatch-alert.rm.do\n",
             encoding="utf-8",
         )
         self.provider = FakeProvider()
@@ -131,8 +132,10 @@ class WebServerTests(TestCase):
         self.thread.join(timeout=2)
         self.tempdir.cleanup()
 
-    def get_json(self, path):
-        with urlopen(f"{self.base_url}{path}", timeout=2) as response:
+    def get_json(self, path, host=None):
+        headers = {"Host": host} if host else {}
+        request = Request(f"{self.base_url}{path}", headers=headers)
+        with urlopen(request, timeout=2) as response:
             return response.status, json.loads(response.read())
 
     def post_json(self, path, payload, include_header=True):
@@ -156,6 +159,17 @@ class WebServerTests(TestCase):
             html = response.read().decode("utf-8")
         self.assertIn("LongWatch · 持仓 K 线", html)
         self.assertIn("LATEST NEWS", html)
+        self.assertIn('id="themeButton"', html)
+        self.assertIn('data-theme-mode="auto"', html)
+
+        with urlopen(f"{self.base_url}/app.js", timeout=2) as response:
+            javascript = response.read().decode("utf-8")
+        self.assertIn('const THEME_MODES = ["auto", "light", "dark"]', javascript)
+        self.assertIn("preferredThemeForTime", javascript)
+
+        with urlopen(f"{self.base_url}/app.css", timeout=2) as response:
+            stylesheet = response.read().decode("utf-8")
+        self.assertIn(':root[data-theme="light"]', stylesheet)
 
     def test_alert_detail_requires_generated_token(self):
         with self.assertRaises(HTTPError) as caught:
@@ -173,6 +187,39 @@ class WebServerTests(TestCase):
             f"{self.base_url}/?symbol=AAPL.US&view=portfolio", timeout=2
         ) as response:
             self.assertEqual(response.status, 200)
+
+    def test_public_alert_host_requires_token_for_page_and_apis(self):
+        public_host = "lwatch-alert.rm.do"
+        for path in ("/", "/api/positions", "/api/settings/bark"):
+            with self.assertRaises(HTTPError) as caught:
+                self.get_json(path, host=public_host)
+            self.assertEqual(caught.exception.code, 403)
+
+        token = self.alert_signer.issue("AAPL.US")
+        query = f"symbol=AAPL.US&view=alert&token={token}"
+        page_request = Request(
+            f"{self.base_url}/?{query}", headers={"Host": public_host}
+        )
+        with urlopen(page_request, timeout=2) as response:
+            self.assertEqual(response.status, 200)
+
+        status, payload = self.get_json(
+            f"/api/positions?sessions=all&{query}", host=public_host
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual([item["symbol"] for item in payload["positions"]], ["AAPL.US"])
+
+        missing_token = "/api/news?symbol=AAPL.US&count=5&view=alert"
+        with self.assertRaises(HTTPError) as caught:
+            self.get_json(missing_token, host=public_host)
+        self.assertEqual(caught.exception.code, 403)
+
+        other_token = self.alert_signer.issue("MSFT.US")
+        _, other = self.get_json(
+            "/api/positions?symbol=MSFT.US&view=alert&token=" + other_token,
+            host=public_host,
+        )
+        self.assertEqual(other["positions"], [])
 
     def test_positions(self):
         status, payload = self.get_json("/api/positions")
