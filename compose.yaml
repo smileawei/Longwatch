@@ -1,0 +1,16 @@
+services:
+  monitor:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+  web:
+    build: .
+    restart: unless-stopped
+    command: ["longwatch", "--web", "--host", "0.0.0.0"]
+    env_file: .env
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/app/data

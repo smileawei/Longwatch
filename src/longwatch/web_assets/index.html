@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b0e12">
+    <title>LongWatch · 持仓 K 线</title>
+    <meta name="description" content="Longbridge 持仓证券 K 线监控面板">
+    <link rel="stylesheet" href="/app.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="LongWatch 首页">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span id="brandLabel">LONGWATCH</span>
+        </a>
+        <div class="topbar-actions">
+          <div class="connection" id="connectionStatus" aria-live="polite">
+            <span class="status-dot"></span>
+            <span>正在连接</span>
+          </div>
+          <button class="settings-button" id="settingsButton" type="button">告警设置</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div>
+            <p class="eyebrow">PORTFOLIO MARKET VIEW</p>
+            <h1>持仓脉搏，<span>一眼看清。</span></h1>
+          </div>
+          <p class="hero-copy">直接读取你的 Longbridge 持仓与行情。价格走势、成交量和均线，集中在一个安静的视图里。</p>
+        </section>
+
+        <section class="portfolio-pulse hidden" id="portfolioPulse" aria-label="持仓波动概览">
+          <div><span>持仓平均</span><strong id="portfolioAverage">—</strong></div>
+          <div><span>上涨 / 下跌</span><strong id="portfolioBreadth">—</strong></div>
+          <div><span>加仓观察</span><strong class="up" id="addWatchCount">—</strong></div>
+          <div><span>减仓观察</span><strong class="down" id="reduceWatchCount">—</strong></div>
+          <p>按同市场持仓的中位涨跌识别相对强弱</p>
+        </section>
+
+        <section class="workspace">
+          <aside class="sidebar" aria-label="持仓证券">
+            <div class="section-heading">
+              <div>
+                <p class="overline">POSITIONS</p>
+                <h2>当前持仓</h2>
+              </div>
+              <span class="count-badge" id="positionCount">—</span>
+            </div>
+            <div id="positionList" class="position-list" aria-live="polite">
+              <div class="skeleton-card"></div>
+              <div class="skeleton-card"></div>
+              <div class="skeleton-card"></div>
+            </div>
+
+            <form class="symbol-form" id="symbolForm">
+              <label for="symbolInput">查看其他证券</label>
+              <div class="input-row">
+                <input id="symbolInput" name="symbol" autocomplete="off" spellcheck="false" placeholder="例如 NVDA.US" maxlength="32">
+                <button type="submit" aria-label="加载证券">→</button>
+              </div>
+            </form>
+          </aside>
+
+          <section class="chart-panel" aria-label="K 线图表">
+            <div class="chart-header">
+              <div class="instrument">
+                <div class="instrument-line">
+                  <h2 id="instrumentName">选择一只证券</h2>
+                  <span id="instrumentSymbol">—</span>
+                </div>
+                <div class="price-line">
+                  <strong id="lastPrice">—</strong>
+                  <span id="priceChange">等待行情</span>
+                </div>
+                <div class="trade-comparison hidden" id="tradeComparison">
+                  <div class="comparison-row" id="lastTradeRow">
+                    <span id="lastTradeReference">相比最近成交</span>
+                    <strong id="lastTradeDifference">—</strong>
+                  </div>
+                  <div class="comparison-row" id="lastBuyRow">
+                    <span id="lastBuyReference">相比最近买入</span>
+                    <strong id="lastBuyDifference">—</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="controls">
+                <div class="periods" id="periods" role="group" aria-label="K 线周期">
+                  <button data-period="1m">1分</button>
+                  <button data-period="5m">5分</button>
+                  <button data-period="15m">15分</button>
+                  <button data-period="30m">30分</button>
+                  <button data-period="60m">1时</button>
+                  <button data-period="day" class="active">日</button>
+                  <button data-period="week">周</button>
+                  <button data-period="month">月</button>
+                </div>
+                <div class="options-row">
+                  <label>
+                    <span>数量</span>
+                    <select id="candleCount">
+                      <option value="100">100</option>
+                      <option value="200" selected>200</option>
+                      <option value="500">500</option>
+                      <option value="1000">1000</option>
+                    </select>
+                  </label>
+                  <label class="toggle-label">
+                    <input type="checkbox" id="adjustToggle" checked>
+                    <span class="toggle"></span>
+                    前复权
+                  </label>
+                  <label class="toggle-label">
+                    <input type="checkbox" id="sessionsToggle" checked>
+                    <span class="toggle"></span>
+                    全时段
+                  </label>
+                  <button class="refresh-button" id="refreshButton" type="button">刷新</button>
+                </div>
+              </div>
+            </div>
+
+            <section class="decision-panel hidden" id="decisionPanel" aria-label="波动决策参考">
+              <div class="decision-heading">
+                <div>
+                  <p class="overline">VOLATILITY DECISION</p>
+                  <span class="decision-badge" id="decisionBadge">保持观察</span>
+                </div>
+                <p id="decisionReasons">正在计算相对强弱与趋势</p>
+              </div>
+              <div class="decision-metrics">
+                <div><span>相对同市场</span><strong id="relativeMove">—</strong></div>
+                <div><span>距 MA20</span><strong id="distanceMa20">—</strong></div>
+                <div><span>距 MA60</span><strong id="distanceMa60">—</strong></div>
+                <div><span>20 日量比</span><strong id="volumeRatio">—</strong></div>
+                <div><span>20 日年化波动</span><strong id="volatility20">—</strong></div>
+                <div><span id="currencyWeightLabel">同币种仓位</span><strong id="currencyWeight">—</strong></div>
+              </div>
+              <p class="decision-note">候选标签仅用于波动筛选；尚未加入你的目标仓位与公司基本面。</p>
+            </section>
+
+            <section class="news-panel hidden" id="newsPanel" aria-label="股票最新新闻">
+              <div class="news-heading">
+                <div><p class="overline">LATEST NEWS</p><h3>最新新闻</h3></div>
+                <span id="newsStatus">10 分钟缓存</span>
+              </div>
+              <div class="news-list" id="newsList"></div>
+              <p class="news-note">数据来自长桥证券；新闻仅供参考，不构成投资建议。</p>
+            </section>
+
+            <div class="legend" id="cursorLegend">
+              <span>开 <b>—</b></span><span>高 <b>—</b></span><span>低 <b>—</b></span><span>收 <b>—</b></span>
+              <span class="ma ma5">MA5 <b>—</b></span><span class="ma ma20">MA20 <b>—</b></span>
+            </div>
+
+            <div class="chart-wrap" id="chartWrap">
+              <canvas id="klineChart" aria-label="证券 K 线图"></canvas>
+              <div class="chart-message" id="chartMessage">
+                <div class="pulse-icon"><span></span></div>
+                <p>从左侧选择一只持仓证券</p>
+              </div>
+            </div>
+
+            <footer class="chart-footer">
+              <div class="market-key"><span class="up-key"></span>上涨 <span class="down-key"></span>下跌</div>
+              <p id="updatedAt">尚未更新</p>
+            </footer>
+          </section>
+        </section>
+
+        <div class="notice hidden" id="notice" role="alert">
+          <div class="notice-icon">!</div>
+          <div><strong id="noticeTitle">行情服务未配置</strong><p id="noticeBody"></p></div>
+        </div>
+      </main>
+
+      <footer class="page-footer">
+        <span>LongWatch / Private market view</span>
+        <span>数据来自 Longbridge OpenAPI</span>
+      </footer>
+    </div>
+
+    <dialog class="settings-dialog" id="settingsDialog">
+      <form class="settings-form" id="settingsForm">
+        <div class="settings-heading">
+          <div><p class="overline">BARK ALERTS</p><h2>告警设置</h2></div>
+          <button type="button" class="dialog-close" id="settingsClose" aria-label="关闭">×</button>
+        </div>
+        <p class="settings-copy">Device Key 只保存在这台 Mac 的本地配置文件中，页面不会显示已保存的原值。</p>
+        <label>
+          <span>Bark Device Key</span>
+          <input id="barkDeviceKey" type="password" autocomplete="new-password" placeholder="请输入 Device Key">
+          <small id="barkConfigured">尚未配置</small>
+        </label>
+        <label>
+          <span>Bark Server URL</span>
+          <input id="barkServerUrl" type="url" inputmode="url" value="https://api.day.app" required>
+        </label>
+        <div class="settings-grid">
+          <label><span>分组</span><input id="barkGroup" type="text" maxlength="64" value="LongWatch"></label>
+          <label>
+            <span>通知级别</span>
+            <select id="barkLevel">
+              <option value="active">普通</option>
+              <option value="timeSensitive">时效性</option>
+              <option value="passive">静默</option>
+              <option value="critical">重要</option>
+            </select>
+          </label>
+        </div>
+        <label><span>声音（可选）</span><input id="barkSound" type="text" maxlength="64" placeholder="例如 alarm"></label>
+        <p class="settings-status" id="settingsStatus" aria-live="polite"></p>
+        <div class="settings-actions">
+          <button type="button" class="secondary-button" id="testBarkButton">发送测试通知</button>
+          <button type="submit" class="primary-button" id="saveBarkButton">保存设置</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>
