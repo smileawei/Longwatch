@@ -1,6 +1,6 @@
 # LongWatch
 
-从 Longbridge OpenAPI 自动读取证券持仓，轮询最新行情，并在涨跌幅跨越阈值时通过 Bark 推送到 iPhone。
+通过 Longbridge OAuth 自动读取证券持仓，轮询最新行情，并在涨跌幅跨越阈值时通过 Bark 推送到 iPhone。
 
 默认监控：
 
@@ -12,7 +12,7 @@
 
 ## 快速开始
 
-要求 Python 3.9+，以及已经开通的 Longbridge OpenAPI 权限。
+要求 Python 3.9+、Longbridge 账户，以及已经注册的 OAuth Client。LongWatch 仅支持 OAuth 认证。
 
 ```bash
 python3 -m venv .venv
@@ -21,7 +21,7 @@ pip install -e .
 cp .env.example .env
 ```
 
-推荐使用 Python SDK OAuth。首次先注册 OAuth Client，并把返回的 `client_id` 写入：
+首次先注册 OAuth Client，并把返回的 `client_id` 写入：
 
 ```dotenv
 LONGBRIDGE_OAUTH_CLIENT_ID=你的ClientID
@@ -98,7 +98,7 @@ longwatch --web
 longwatch --web --host 127.0.0.1 --port 9000
 ```
 
-服务默认只监听本机，不应直接暴露到公网。K 线接口单次最多获取 1000 根；行情范围与实时性取决于 Longbridge OpenAPI 行情权限。
+服务默认只监听本机，不应直接暴露到公网。K 线接口单次最多获取 1000 根；行情范围与实时性取决于 Longbridge 行情权限。
 
 ## 告警阈值
 
@@ -121,7 +121,7 @@ INCLUDE_EXTENDED_HOURS=true
 LONGBRIDGE_ENABLE_OVERNIGHT=true
 ```
 
-扩展时段涨跌幅使用 SDK 为该时段返回的 `prev_close`。行情权限不足时，SDK 可能无法返回实时价格；Longbridge 的 OpenAPI 行情权限与 App/Web 行情权限是分开的。
+扩展时段涨跌幅使用 SDK 为该时段返回的 `prev_close`。行情权限不足时，SDK 可能无法返回实时价格；SDK 行情权限与 App/Web 行情权限可能不同。
 
 ## Docker 常驻运行
 
@@ -149,4 +149,4 @@ BARK_DEVICE_KEY=你的设备Key
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
-> 本项目只读取持仓和行情，不包含下单逻辑。Access Token 仍具有敏感账户权限，应当像密码一样保管。
+> 本项目只读取持仓和行情，不包含下单逻辑。SDK 缓存的 OAuth 令牌仍具有敏感账户权限，应当像密码一样保管。

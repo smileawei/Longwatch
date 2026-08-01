@@ -141,18 +141,7 @@ class Settings:
         )
 
     def validate(self, require_bark: bool = True) -> None:
-        if not self.oauth_client_id:
-            required = [
-                "LONGBRIDGE_APP_KEY",
-                "LONGBRIDGE_APP_SECRET",
-                "LONGBRIDGE_ACCESS_TOKEN",
-            ]
-            missing = [name for name in required if not os.getenv(name, "").strip()]
-            if missing:
-                raise ValueError(
-                    "缺少 LONGBRIDGE_OAUTH_CLIENT_ID；如使用旧版 API Key，则需配置: "
-                    + ", ".join(missing)
-                )
+        self.validate_oauth()
         if require_bark and not self.bark_device_key:
             raise ValueError("缺少 BARK_DEVICE_KEY")
         if self.alert_detail_base_url:
@@ -162,4 +151,4 @@ class Settings:
 
     def validate_oauth(self) -> None:
         if not self.oauth_client_id:
-            raise ValueError("缺少 LONGBRIDGE_OAUTH_CLIENT_ID")
+            raise ValueError("缺少 LONGBRIDGE_OAUTH_CLIENT_ID；LongWatch 仅支持 OAuth 认证")
