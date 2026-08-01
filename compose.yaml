@@ -1,11 +1,16 @@
 services:
   monitor:
+    image: ${LONGWATCH_IMAGE:-ghcr.io/smileawei/longwatch:latest}
     build: .
     restart: unless-stopped
     env_file: .env
+    ports:
+      - "${LONGBRIDGE_OAUTH_CALLBACK_PORT:-60355}:${LONGBRIDGE_OAUTH_CALLBACK_PORT:-60355}"
     volumes:
       - ./data:/app/data
+      - longbridge-oauth:/home/longwatch/.longbridge/openapi/tokens
   web:
+    image: ${LONGWATCH_IMAGE:-ghcr.io/smileawei/longwatch:latest}
     build: .
     restart: unless-stopped
     command: ["longwatch", "--web", "--host", "0.0.0.0"]
@@ -14,3 +19,7 @@ services:
       - "8765:8765"
     volumes:
       - ./data:/app/data
+      - longbridge-oauth:/home/longwatch/.longbridge/openapi/tokens
+
+volumes:
+  longbridge-oauth:
