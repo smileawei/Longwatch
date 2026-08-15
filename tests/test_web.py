@@ -291,13 +291,14 @@ class WebServerTests(TestCase):
         self.assertTrue(result["ok"])
         send.assert_called_once()
         title, body, detail_url = send.call_args.args
-        self.assertEqual(title, "【测试】INTC 快速下跌 -3.20%")
+        self.assertEqual(title, "【测试】INTC 较今日最后成交下跌 -5.20%")
         self.assertEqual(
             body,
             "INTC.US｜盘后\n"
             "实时价格 89.228 USD\n"
             "当日涨跌 -0.86%\n"
-            "模拟触发：5分钟快速下跌 -3.20%\n"
+            "模拟今日最后成交 94.122 USD\n"
+            "较今日成交 -5.20%\n"
             "这是测试通知，不会记录为真实告警。",
         )
         parsed = urlsplit(detail_url)

@@ -69,6 +69,11 @@ def _positive_float(name: str, default: float) -> float:
     return value
 
 
+def _positive_float_with_legacy(name: str, legacy_name: str, default: float) -> float:
+    selected_name = name if os.getenv(name) is not None else legacy_name
+    return _positive_float(selected_name, default)
+
+
 def _positive_int(name: str, default: int) -> int:
     value = int(os.getenv(name, str(default)))
     if value <= 0:
@@ -98,8 +103,8 @@ class Settings:
     positions_refresh_seconds: float
     day_rise_pct: float
     day_fall_pct: float
-    cost_gain_pct: float
-    cost_loss_pct: float
+    execution_rise_pct: float
+    execution_fall_pct: float
     alert_hysteresis_pct: float
     include_extended_hours: bool
     quote_batch_size: int
@@ -125,8 +130,12 @@ class Settings:
             positions_refresh_seconds=_positive_float("POSITIONS_REFRESH_SECONDS", 300),
             day_rise_pct=_positive_float("DAY_RISE_PCT", 3),
             day_fall_pct=_positive_float("DAY_FALL_PCT", 3),
-            cost_gain_pct=_positive_float("COST_GAIN_PCT", 10),
-            cost_loss_pct=_positive_float("COST_LOSS_PCT", 5),
+            execution_rise_pct=_positive_float_with_legacy(
+                "EXECUTION_RISE_PCT", "COST_GAIN_PCT", 10
+            ),
+            execution_fall_pct=_positive_float_with_legacy(
+                "EXECUTION_FALL_PCT", "COST_LOSS_PCT", 5
+            ),
             alert_hysteresis_pct=_positive_float("ALERT_HYSTERESIS_PCT", 0.3),
             include_extended_hours=_bool("INCLUDE_EXTENDED_HOURS", False),
             quote_batch_size=_positive_int("QUOTE_BATCH_SIZE", 50),

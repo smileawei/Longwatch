@@ -40,6 +40,7 @@ class AlertState:
     def __init__(self, path: Path):
         self.path = path
         self.active: dict[str, bool] = {}
+        self.execution_references: dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
@@ -48,6 +49,11 @@ class AlertState:
             active = data.get("active", {})
             if isinstance(active, dict):
                 self.active = {str(key): bool(value) for key, value in active.items()}
+            references = data.get("execution_references", {})
+            if isinstance(references, dict):
+                self.execution_references = {
+                    str(key): str(value) for key, value in references.items()
+                }
         except FileNotFoundError:
             return
         except (OSError, json.JSONDecodeError) as exc:
@@ -57,7 +63,14 @@ class AlertState:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")
         temporary.write_text(
-            json.dumps({"active": self.active}, ensure_ascii=False, indent=2),
+            json.dumps(
+                {
+                    "active": self.active,
+                    "execution_references": self.execution_references,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
             encoding="utf-8",
         )
         os.replace(temporary, self.path)
@@ -69,8 +82,8 @@ class AlertEngine:
         state: AlertState,
         day_rise_pct: float,
         day_fall_pct: float,
-        cost_gain_pct: float,
-        cost_loss_pct: float,
+        execution_rise_pct: float,
+        execution_fall_pct: float,
         hysteresis_pct: float,
         detail_base_url: str = "",
         detail_secret: str = "",
@@ -85,19 +98,29 @@ class AlertEngine:
         self.rules = (
             Rule("day_up", "当日上涨", "up", Decimal(str(day_rise_pct))),
             Rule("day_down", "当日下跌", "down", Decimal(str(day_fall_pct))),
-            Rule("cost_up", "持仓盈利", "up", Decimal(str(cost_gain_pct))),
-            Rule("cost_down", "持仓亏损", "down", Decimal(str(cost_loss_pct))),
+            Rule(
+                "execution_up",
+                "较今日最后成交上涨",
+                "up",
+                Decimal(str(execution_rise_pct)),
+            ),
+            Rule(
+                "execution_down",
+                "较今日最后成交下跌",
+                "down",
+                Decimal(str(execution_fall_pct)),
+            ),
         )
 
     def evaluate(self, snapshot: Snapshot) -> list[Alert]:
         metrics = {
             "day": snapshot.quote.day_change_pct,
-            "cost": snapshot.cost_change_pct,
+            "execution": snapshot.execution_change_pct,
         }
         alerts: list[Alert] = []
-        changed = False
+        changed = self._sync_execution_reference(snapshot)
         for rule in self.rules:
-            metric = metrics["day" if rule.name.startswith("day_") else "cost"]
+            metric = metrics["day" if rule.name.startswith("day_") else "execution"]
             if metric is None:
                 continue
             key = f"{snapshot.position.symbol}:{rule.name}"
@@ -111,6 +134,33 @@ class AlertEngine:
             self.state.save()
         return alerts
 
+    def _sync_execution_reference(self, snapshot: Snapshot) -> bool:
+        if not snapshot.execution_data_available:
+            return False
+        symbol = snapshot.position.symbol
+        execution = snapshot.last_execution
+        reference = ""
+        if execution is not None:
+            reference = ":".join(
+                (
+                    str(execution.timestamp),
+                    str(execution.price),
+                    str(execution.quantity),
+                    execution.side,
+                )
+            )
+        previous = self.state.execution_references.get(symbol, "")
+        if previous == reference:
+            return False
+
+        for rule_name in ("execution_up", "execution_down"):
+            self.state.active.pop(f"{symbol}:{rule_name}", None)
+        if reference:
+            self.state.execution_references[symbol] = reference
+        else:
+            self.state.execution_references.pop(symbol, None)
+        return True
+
     def confirm_sent(self, alert: Alert) -> None:
         """Persist only after Bark accepted the push, so a network error cannot lose it."""
         if not self.state.active.get(alert.key, False):
@@ -123,13 +173,23 @@ class AlertEngine:
         sign = "+" if value >= 0 else ""
         title = f"{position.name} {rule.label} {sign}{value:.2f}%"
         day = quote.day_change_pct
-        cost = snapshot.cost_change_pct
+        execution_change = snapshot.execution_change_pct
         day_text = "--" if day is None else f"{day:+.2f}%"
-        cost_text = "--" if cost is None else f"{cost:+.2f}%"
+        execution_text = (
+            "--" if execution_change is None else f"{execution_change:+.2f}%"
+        )
+        execution = snapshot.last_execution
+        execution_line = "今日暂无成交"
+        if execution is not None:
+            side = f"{execution.side} " if execution.side else ""
+            execution_line = (
+                f"今日最后成交 {side}{execution.price} {position.currency}"
+            )
         body = (
             f"{position.symbol}｜{quote.session}\n"
             f"现价 {quote.last_price} {position.currency}\n"
-            f"当日 {day_text}｜持仓 {cost_text}\n"
+            f"当日 {day_text}｜较今日成交 {execution_text}\n"
+            f"{execution_line}\n"
             f"数量 {position.quantity}｜未实现盈亏 {snapshot.unrealized_pnl:+.2f} {position.currency}"
         )
         return Alert(
@@ -153,8 +213,21 @@ class AlertEngine:
         )
 
     def remove_stale_symbols(self, current_symbols: set[str]) -> None:
-        stale = [key for key in self.state.active if key.split(":", 1)[0] not in current_symbols]
+        valid_rules = {rule.name for rule in self.rules}
+        stale = []
+        for key in self.state.active:
+            symbol, separator, rule_name = key.partition(":")
+            if not separator or symbol not in current_symbols or rule_name not in valid_rules:
+                stale.append(key)
         if stale:
             for key in stale:
                 del self.state.active[key]
+        stale_references = [
+            symbol
+            for symbol in self.state.execution_references
+            if symbol not in current_symbols
+        ]
+        for symbol in stale_references:
+            del self.state.execution_references[symbol]
+        if stale or stale_references:
             self.state.save()
