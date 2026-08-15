@@ -43,21 +43,34 @@ class MonitorService:
         self.refresh_positions(force=force_positions_refresh)
         if not self.positions:
             return []
-        quotes = self.provider.get_quotes(position.symbol for position in self.positions)
+        symbols = [position.symbol for position in self.positions]
+        quotes = self.provider.get_quotes(symbols)
+        execution_data_available = True
+        try:
+            executions = self.provider.get_today_last_executions(symbols)
+        except Exception as exc:
+            logger.warning("未能读取当天成交记录，将跳过成交价告警: %s", exc)
+            executions = {}
+            execution_data_available = False
         snapshots: list[Snapshot] = []
         for position in self.positions:
             quote = quotes.get(position.symbol)
             if quote is None:
                 logger.warning("未获得 %s 的行情", position.symbol)
                 continue
-            snapshot = Snapshot(position=position, quote=quote)
+            snapshot = Snapshot(
+                position=position,
+                quote=quote,
+                last_execution=executions.get(position.symbol),
+                execution_data_available=execution_data_available,
+            )
             snapshots.append(snapshot)
             logger.debug(
-                "%s 现价=%s 当日=%s 持仓=%s",
+                "%s 现价=%s 当日=%s 较今日成交=%s",
                 position.symbol,
                 quote.last_price,
                 quote.day_change_pct,
-                snapshot.cost_change_pct,
+                snapshot.execution_change_pct,
             )
             for alert in self.engine.evaluate(snapshot):
                 self.notifier.send(alert.title, alert.body, alert.url)

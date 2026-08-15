@@ -59,6 +59,8 @@ class NewsArticle:
 class Snapshot:
     position: Position
     quote: Quote
+    last_execution: LastExecution | None = None
+    execution_data_available: bool = True
 
     @property
     def cost_change_pct(self) -> Decimal | None:
@@ -66,6 +68,12 @@ class Snapshot:
         if cost_value <= 0:
             return None
         return self.unrealized_pnl / cost_value * 100
+
+    @property
+    def execution_change_pct(self) -> Decimal | None:
+        if self.last_execution is None or self.last_execution.price <= 0:
+            return None
+        return (self.quote.last_price / self.last_execution.price - 1) * 100
 
     @property
     def market_value(self) -> Decimal:

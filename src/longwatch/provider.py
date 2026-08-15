@@ -193,6 +193,35 @@ class LongbridgeProvider:
             if symbol in newest or symbol in newest_buy
         }
 
+    def get_today_last_executions(
+        self,
+        symbols: Iterable[str],
+    ) -> dict[str, LastExecution]:
+        """Return each symbol's newest execution from Longbridge's current trading day."""
+        wanted = set(symbols)
+        if not wanted:
+            return {}
+
+        order_sides = {
+            str(order.order_id): self._order_side_name(order.side)
+            for order in self._trade.today_orders()
+        }
+        newest: dict[str, LastExecution] = {}
+        for execution in self._trade.today_executions():
+            if execution.symbol not in wanted:
+                continue
+            item = LastExecution(
+                symbol=execution.symbol,
+                price=_decimal(execution.price),
+                quantity=_decimal(execution.quantity),
+                timestamp=_timestamp(execution.trade_done_at),
+                side=order_sides.get(str(execution.order_id), ""),
+            )
+            current = newest.get(item.symbol)
+            if current is None or item.timestamp >= current.timestamp:
+                newest[item.symbol] = item
+        return newest
+
     def get_news(self, symbol: str, count: int = 10) -> list[NewsArticle]:
         """Read public stock news through the Longbridge CLI JSON interface."""
         try:

@@ -5,7 +5,7 @@ from unittest import TestCase
 from urllib.parse import parse_qs, urlsplit
 
 from longwatch.alert_links import AlertLinkSigner
-from longwatch.models import Position, Quote
+from longwatch.models import LastExecution, Position, Quote
 from longwatch.monitor import AlertEngine, AlertState
 from longwatch.service import MonitorService
 
@@ -20,6 +20,13 @@ class FakeProvider:
 
     def get_quotes(self, symbols):
         return {"AAPL.US": Quote("AAPL.US", Decimal("104"), Decimal("100"), 1)}
+
+    def get_today_last_executions(self, symbols):
+        return {
+            "AAPL.US": LastExecution(
+                "AAPL.US", Decimal("100"), Decimal("1"), 1, "买入"
+            )
+        }
 
 
 class FakeNotifier:

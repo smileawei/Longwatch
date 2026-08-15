@@ -498,6 +498,7 @@ class DashboardApplication:
             raise RuntimeError("未读取到 INTC.US 实时行情")
         day_change = quote.day_change_pct
         day_text = "暂无" if day_change is None else f"{day_change:+.2f}%"
+        simulated_execution_price = quote.last_price / Decimal("0.948")
         detail_base_url = values.get("ALERT_DETAIL_BASE_URL", "").strip()
         detail_url = ""
         if detail_base_url:
@@ -519,12 +520,13 @@ class DashboardApplication:
             sound=values.get("BARK_SOUND", ""),
         )
         notifier.send(
-            "【测试】INTC 快速下跌 -3.20%",
+            "【测试】INTC 较今日最后成交下跌 -5.20%",
             (
                 f"{symbol}｜{quote.session}\n"
                 f"实时价格 {quote.last_price} USD\n"
                 f"当日涨跌 {day_text}\n"
-                "模拟触发：5分钟快速下跌 -3.20%\n"
+                f"模拟今日最后成交 {simulated_execution_price:.3f} USD\n"
+                "较今日成交 -5.20%\n"
                 "这是测试通知，不会记录为真实告警。"
             ),
             detail_url,
