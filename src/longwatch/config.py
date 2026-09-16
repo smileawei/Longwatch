@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
+
+logger = logging.getLogger(__name__)
 
 
 def load_dotenv(path: str | Path = ".env") -> None:
@@ -54,11 +57,23 @@ def ensure_alert_link_secret(path: str | Path = ".env") -> str:
         if output and output[-1]:
             output.append("")
         output.append(f"ALERT_LINK_SECRET={secret}")
-    env_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = env_path.with_suffix(f"{env_path.suffix}.tmp")
-    temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
-    os.replace(temporary, env_path)
     os.environ["ALERT_LINK_SECRET"] = secret
+    try:
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = env_path.with_suffix(f"{env_path.suffix}.tmp")
+        temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
+        os.replace(temporary, env_path)
+    except OSError as exc:
+        # Deployments that inject configuration through the environment can
+        # mount .env read-only, and the container image leaves the working
+        # directory unwritable. Failing here would abort startup even though
+        # the secret is fully usable; the only cost of continuing is that a
+        # restart issues a new one.
+        logger.warning(
+            "无法把新的告警链接密钥写入 %s，本次运行将继续使用内存中的密钥: %s",
+            env_path,
+            exc,
+        )
     return secret
 
 
